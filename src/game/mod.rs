@@ -114,41 +114,6 @@ impl Game {
         opposite_color_moves.into_iter().find( |valid_move| valid_move.to == square )
     }
 
-    // fn square_attacked(&self, square: Square, by_color: Color) -> bool {
-    //     let attacked_by_king = AttackCheck::Squares(SquareAttackCheck {
-    //         pieces: &[Piece::King],
-    //         color: by_color,
-    //         squares: &[
-    //             Square::new(square.rank - 1, square.file - 1),
-    //             Square::new(square.rank - 1, square.file    ),
-    //             Square::new(square.rank - 1, square.file + 1),
-    //
-    //             Square::new(square.rank    , square.file - 1),
-    //             Square::new(square.rank    , square.file + 1),
-    //
-    //             Square::new(square.rank + 1, square.file - 1),
-    //             Square::new(square.rank + 1, square.file    ),
-    //             Square::new(square.rank + 1, square.file + 1),
-    //         ]
-    //     });
-    //
-    //     false
-    // }
-
-    // fn attack_check(&self, check: AttackCheck) -> Some((Square, OccupiedSquare)) {
-    //     match check {
-    //         AttackCheck::Squares(square_check) => {
-    //             square_check.squares.iter()
-    //                 .filter_map( |s| *s )
-    //                 .filter_map( |square| self.square_occupied(square) )
-    //                 .any( |occupancy|
-    //                     occupancy.color == square_check.color &&
-    //                     square_check.pieces.iter().find( |piece| piece ==  )
-    //                 )
-    //         }
-    //     }
-    // }
-
     pub fn valid_moves(&self) -> Vec<ValidMove> {
         self.valid_moves_for_color(self.position.next_to_move, true)
     }
