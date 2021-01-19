@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 mod pgn_test;
 mod rules_test;
+mod fen_test;
 
 #[test]
 fn test_reading_positions() {
@@ -113,7 +114,7 @@ pub fn expect_parse(pgn: &str, expected_games: &[ParsedGame]) {
 }
 
 pub fn expect_game_state(starting_board: &str, moves: &[&str], expected_board: &str) {
-    let mut game = Game::new(read_board(starting_board), Color::White);
+    let mut game = Game::new_for_test(read_board(starting_board), Color::White);
 
     for next_move in moves {
         game = game.make_move(next_move).expect("Invalid move");
@@ -125,11 +126,11 @@ pub fn expect_game_state(starting_board: &str, moves: &[&str], expected_board: &
 }
 
 pub fn read_game(board: &str, next_to_move: Color) -> Game {
-    Game::new(read_board(board), next_to_move)
+    Game::new_for_test(read_board(board), next_to_move)
 }
 
 pub fn expect_valid_moves(board: &str, next_to_move: Color, moves: &[&str]) {
-    let game = Game::new(read_board(board), next_to_move);
+    let game = Game::new_for_test(read_board(board), next_to_move);
 
     let actual_moves: HashSet<String> = game.valid_moves().into_iter()
         .map( |valid_move| valid_move.notation() )

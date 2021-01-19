@@ -1,6 +1,10 @@
 use super::models::*;
 use regex::Regex;
 use lazy_static::lazy_static;
+use serde::{Serialize, Deserialize};
+
+use super::parser::lexer::{Lexer, LexerError};
+use super::parser::{Parser, ParseError};
 
 #[derive(Debug)]
 pub struct Game {
@@ -11,16 +15,16 @@ pub struct Game {
 pub enum InvalidMoveError {
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValidMove {
-    color: Color,
+    pub color: Color,
 
-    from: Square,
-    to: Square,
+    pub from: Square,
+    pub to: Square,
 
-    piece: Piece,
+    pub piece: Piece,
 
-    takes: Option<Piece>
+    pub takes: Option<Piece>
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,25 +45,34 @@ pub struct PartialMove {
     castles: Option<Option<CastlesDirection>>
 }
 
-struct SquareAttackCheck<'a> {
-    pieces: &'a [Piece],
-    color: Color,
-    squares: &'a [Option<Square>]
+pub enum PGNReadError {
+    LexerError(LexerError),
+    ParserError(ParseError),
+
+    // TODO
+    GameError(())
 }
 
-struct LinesAttackCheck<'a> {
-    pieces: &'a [Piece],
-    color: Color,
-    squares: &'a [Vec<Square>]
+impl From<LexerError> for PGNReadError {
+    fn from(error: LexerError) -> Self { PGNReadError::LexerError(error) }
 }
 
-enum AttackCheck<'a> {
-    Squares(SquareAttackCheck<'a>),
-    Lines(LinesAttackCheck<'a>)
+impl From<ParseError> for PGNReadError {
+    fn from(error: ParseError) -> Self { PGNReadError::ParserError(error) }
 }
 
 impl Game {
-    pub fn new(board: Board, next_to_move: Color) -> Self {
+    pub fn new(initial_position: Position) -> Self {
+        Self { position: initial_position }
+    }
+
+    // pub fn standard_position() -> Position {
+    //     Position {
+    //         board:
+    //     }
+    // }
+
+    pub fn new_for_test(board: Board, next_to_move: Color) -> Self {
         Self {
             // TODO: Pass position directly
             position: Position {
@@ -75,6 +88,16 @@ impl Game {
             }
         }
     }
+
+    // pub fn from_pgn(pgn: &str) -> Result<Self, PGNReadError> {
+    //     let pgn_lexer = Lexer::new(pgn);
+    //     let tokens = pgn_lexer.lex()?;
+
+    //     let pgn_parser = Parser::new(tokens);
+    //     let moves = pgn_parser.parse()?;
+
+    //     let game = Game::new()
+    // }
 
     pub fn board(&self) -> &Board {
         &self.position.board

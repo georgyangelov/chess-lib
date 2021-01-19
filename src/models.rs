@@ -1,6 +1,10 @@
 use core::fmt::Debug;
+use wasm_bindgen::prelude::*;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Piece {
     Pawn,
     Rook,
@@ -10,7 +14,9 @@ pub enum Piece {
     King
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum GameResult {
     Unknown,
     Draw,
@@ -18,7 +24,9 @@ pub enum GameResult {
     BlackWins
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Color {
     White,
     Black
@@ -33,12 +41,14 @@ impl Color {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[wasm_bindgen]
+#[derive(PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct Square {
     pub rank: i8,
     pub file: i8
 }
 
+#[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OccupiedSquare {
     pub piece: Piece,

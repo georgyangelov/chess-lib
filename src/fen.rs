@@ -1,11 +1,279 @@
 use super::models::*;
+use std::vec::Vec;
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct FenParseError {
+    message: String
+}
 
 impl Position {
-    // pub fn from_fen(fen: &str) -> Position {
-    //
-    // }
+    pub fn from_fen(fen: &str) -> Result<Position, FenParseError> {
+        let mut chars = fen.chars();
+        let mut squares: Vec<Option<OccupiedSquare>> = Vec::with_capacity(64);
 
-    // pub fn to_fen(&self) -> String {
+        let mut i = 0;
+        loop {
+            if i >= 8 * 8 {
+                break;
+            }
 
-    // }
+            let square = Square { rank: 7 - i as i8 / 8, file: i as i8 % 8 };
+            let first_square_in_rank = square.file == 0;
+
+            match chars.next() {
+                Some('/') if first_square_in_rank => continue,
+
+                Some(c) if c.is_digit(10) => {
+                    let number_of_empty_squares = c as u8 - '0' as u8;
+
+                    i += number_of_empty_squares;
+
+                    for _ in 0..number_of_empty_squares {
+                        squares.push(None);
+                    }
+                },
+
+                Some(c) if c.is_alphabetic() => {
+                    let occupancy = Self::occupancy_from_char(c)?;
+
+                    i += 1;
+
+                    squares.push(Some(occupancy));
+                },
+
+                Some(c) => return Err(FenParseError {
+                    message: format!("Unexpected character '{}'", c)
+                }),
+
+                None => return Err(FenParseError {
+                    message: String::from("Unexpected end of FEN string")
+                })
+            }
+        }
+
+        if chars.next() != Some(' ') {
+            return Err(FenParseError {
+                message: String::from("Expected ' ' after the piece positions")
+            });
+        }
+
+        let next_to_move = match chars.next() {
+            Some('w') => Color::White,
+            Some('b') => Color::Black,
+            Some(c) => return Err(FenParseError {
+                message: format!("Unexpected char '{}' instead of player to move", c)
+            }),
+            None => return Err(FenParseError {
+                message: String::from("Unexpected end of FEN string")
+            })
+        };
+
+        if chars.next() != Some(' ') {
+            return Err(FenParseError {
+                message: String::from("Expected ' ' after the player to move")
+            });
+        }
+
+        let mut white_can_castle_king_side  = false;
+        let mut white_can_castle_queen_side = false;
+        let mut black_can_castle_king_side  = false;
+        let mut black_can_castle_queen_side = false;
+
+        loop {
+            match chars.next() {
+                Some(' ') => break,
+                Some('-') => continue,
+
+                Some('K') => white_can_castle_king_side = true,
+                Some('Q') => white_can_castle_queen_side = true,
+
+                Some('k') => black_can_castle_king_side = true,
+                Some('q') => black_can_castle_queen_side = true,
+
+                Some(c) => return Err(FenParseError {
+                    message: format!("Unexpected character '{}'", c)
+                }),
+
+                None => return Err(FenParseError {
+                    message: String::from("Unexpected end of FEN string")
+                })
+            }
+        }
+
+        // TODO: Read en-passant square
+        if chars.next() != Some('-') {
+            return Err(FenParseError {
+                message: String::from("En-passant square not supported yet")
+            });
+        }
+
+        if chars.next() != Some(' ') {
+            return Err(FenParseError {
+                message: String::from("Expected ' ' after the castling flags")
+            });
+        }
+
+        let half_move_clock = {
+            let mut num_string = String::new();
+
+            loop {
+                match chars.next() {
+                    Some(c) if c.is_digit(10) => num_string.push(c),
+                    Some(' ') => break,
+                    Some(c) => return Err(FenParseError {
+                        message: format!("Unexpected character '{}'", c)
+                    }),
+
+                    None => return Err(FenParseError {
+                        message: String::from("Unexpected end of FEN string")
+                    })
+                }
+            }
+
+            let int = num_string.parse::<i64>();
+
+            match int {
+                Ok(value) => value,
+                Err(_) => return Err(FenParseError {
+                    message: String::from("Cannot parse half-move clock as int")
+                })
+            }
+        };
+
+        // TODO: Fix code duplication
+        let full_move_counter = {
+            let mut num_string = String::new();
+
+            loop {
+                match chars.next() {
+                    Some(c) if c.is_digit(10) => num_string.push(c),
+                    Some(c) => return Err(FenParseError {
+                        message: format!("Unexpected character '{}'", c)
+                    }),
+
+                    None => break
+                }
+            }
+
+            let int = num_string.parse::<i64>();
+
+            match int {
+                Ok(value) => value,
+                Err(_) => return Err(FenParseError {
+                    message: String::from("Cannot parse half-move clock as int")
+                })
+            }
+        };
+
+        Ok(Position {
+            board: Board { squares },
+
+            next_to_move,
+
+            // TODO: Distinguish between king-side and queen-side
+            white_can_castle: white_can_castle_king_side,
+            black_can_castle: black_can_castle_king_side,
+
+            half_move_clock,
+            full_move_counter
+        })
+    }
+
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::new();
+        let mut blank_square_count = 0;
+
+        for (i, occupancy) in self.board.squares.iter().enumerate() {
+            let square = Square { rank: 7 - i as i8 / 8, file: i as i8 % 8 };
+            let last_square_in_rank = square.file == 7;
+
+            match occupancy {
+                Some(occupancy) => fen.push(Self::occupancy_to_char(occupancy)),
+                None => blank_square_count += 1
+            }
+
+            if blank_square_count > 0 && (occupancy.is_some() || last_square_in_rank) {
+                fen.push_str(&blank_square_count.to_string());
+                blank_square_count = 0;
+            }
+
+            if last_square_in_rank && square.rank != 0 {
+                fen.push('/');
+            }
+        }
+
+        fen.push(' ');
+        fen.push(match self.next_to_move {
+            Color::White => 'w',
+            Color::Black => 'b'
+        });
+
+        fen.push(' ');
+        if !self.white_can_castle && !self.black_can_castle {
+            fen.push('-');
+        } else {
+            // TODO: King/Queen distinction
+            if self.white_can_castle {
+                fen.push('K');
+                fen.push('Q');
+            }
+
+            // TODO: King/Queen distinction
+            if self.white_can_castle {
+                fen.push('k');
+                fen.push('q');
+            }
+        }
+
+        // TODO: en-passant target square
+        fen.push(' ');
+        fen.push('-');
+
+        fen.push(' ');
+        fen.push_str(&self.half_move_clock.to_string());
+        fen.push(' ');
+        fen.push_str(&self.full_move_counter.to_string());
+
+        fen
+    }
+
+    fn occupancy_to_char(occupancy: &OccupiedSquare) -> char {
+        match occupancy {
+            OccupiedSquare { piece: Piece::Pawn,   color: Color::White } => 'P',
+            OccupiedSquare { piece: Piece::Knight, color: Color::White } => 'N',
+            OccupiedSquare { piece: Piece::Bishop, color: Color::White } => 'B',
+            OccupiedSquare { piece: Piece::Rook,   color: Color::White } => 'R',
+            OccupiedSquare { piece: Piece::Queen,  color: Color::White } => 'Q',
+            OccupiedSquare { piece: Piece::King,   color: Color::White } => 'K',
+
+            OccupiedSquare { piece: Piece::Pawn,   color: Color::Black } => 'p',
+            OccupiedSquare { piece: Piece::Knight, color: Color::Black } => 'n',
+            OccupiedSquare { piece: Piece::Bishop, color: Color::Black } => 'b',
+            OccupiedSquare { piece: Piece::Rook,   color: Color::Black } => 'r',
+            OccupiedSquare { piece: Piece::Queen,  color: Color::Black } => 'q',
+            OccupiedSquare { piece: Piece::King,   color: Color::Black } => 'k'
+        }
+    }
+
+    fn occupancy_from_char(letter: char) -> Result<OccupiedSquare, FenParseError> {
+        match letter {
+            'P' => Ok(OccupiedSquare { piece: Piece::Pawn,   color: Color::White }),
+            'N' => Ok(OccupiedSquare { piece: Piece::Knight, color: Color::White }),
+            'B' => Ok(OccupiedSquare { piece: Piece::Bishop, color: Color::White }),
+            'R' => Ok(OccupiedSquare { piece: Piece::Rook,   color: Color::White }),
+            'Q' => Ok(OccupiedSquare { piece: Piece::Queen,  color: Color::White }),
+            'K' => Ok(OccupiedSquare { piece: Piece::King,   color: Color::White }),
+
+            'p' => Ok(OccupiedSquare { piece: Piece::Pawn,   color: Color::Black }),
+            'n' => Ok(OccupiedSquare { piece: Piece::Knight, color: Color::Black }),
+            'b' => Ok(OccupiedSquare { piece: Piece::Bishop, color: Color::Black }),
+            'r' => Ok(OccupiedSquare { piece: Piece::Rook,   color: Color::Black }),
+            'q' => Ok(OccupiedSquare { piece: Piece::Queen,  color: Color::Black }),
+            'k' => Ok(OccupiedSquare { piece: Piece::King,   color: Color::Black }),
+
+            _ => Err(FenParseError {
+                message: format!("Invalid piece letter '{}'", letter)
+            })
+        }
+    }
 }
