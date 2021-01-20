@@ -117,6 +117,7 @@ pub fn expect_game_state(starting_board: &str, moves: &[&str], expected_board: &
     let mut game = Game::new_for_test(read_board(starting_board), Color::White);
 
     for next_move in moves {
+        println!("Move: {}", next_move);
         game = game.make_move(next_move).expect("Invalid move");
     }
 

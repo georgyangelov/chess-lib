@@ -49,7 +49,7 @@ pub struct Square {
 }
 
 #[wasm_bindgen]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct OccupiedSquare {
     pub piece: Piece,
     pub color: Color
@@ -66,8 +66,12 @@ pub struct Position {
 
     pub next_to_move: Color,
 
-    pub white_can_castle: bool,
-    pub black_can_castle: bool,
+    pub white_can_castle_king_side: bool,
+    pub white_can_castle_queen_side: bool,
+    pub black_can_castle_king_side: bool,
+    pub black_can_castle_queen_side: bool,
+
+    pub en_passant_square: Option<Square>,
 
     pub half_move_clock: i64,
     pub full_move_counter: i64,

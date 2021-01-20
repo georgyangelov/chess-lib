@@ -84,6 +84,67 @@ fn test_pawn_takes() {
 }
 
 #[test]
+fn test_en_passant_takes() {
+    expect_game_state(
+        "
+        |r|n|b|q|k|b|n|r| 8
+        |p|p|p|p|p|p|p|p| 7
+        | | | | | | | | | 6
+        | | | | | | | | | 5
+        | | | | | | | | | 4
+        | | | | | | | | | 3
+        |P|P|P|P|P|P|P|P| 2
+        |R|N|B|Q|K|B|N|R| 1
+         a b c d e f g h
+        ",
+
+        &["e4", "Nc6", "e5", "f5", "exf6"],
+
+        "
+        |r| |b|q|k|b|n|r|
+        |p|p|p|p|p| |p|p|
+        | | |n| | |P| | |
+        | | | | | | | | |
+        | | | | | | | | |
+        | | | | | | | | |
+        |P|P|P|P| |P|P|P|
+        |R|N|B|Q|K|B|N|R|
+        ",
+    );
+}
+
+// TODO: Make a negative test
+#[test]
+fn test_en_passant_takes_by_black() {
+    expect_game_state(
+        "
+        |r|n|b|q|k|b|n|r| 8
+        |p|p|p|p|p|p|p|p| 7
+        | | | | | | | | | 6
+        | | | | | | | | | 5
+        | | | | | | | | | 4
+        | | | | | | | | | 3
+        |P|P|P|P|P|P|P|P| 2
+        |R|N|B|Q|K|B|N|R| 1
+         a b c d e f g h
+        ",
+
+        &["Nc3", "e5", "Na4", "e4", "d4", "exd3"],
+
+        "
+        |r|n|b|q|k|b|n|r|
+        |p|p|p|p| |p|p|p|
+        | | | | | | | | |
+        | | | | | | | | |
+        |N| | | | | | | |
+        | | | |p| | | | |
+        |P|P|P| |P|P|P|P|
+        |R| |B|Q|K|B|N|R|
+        ",
+    );
+}
+
+#[test]
 fn test_knight_moves() {
     expect_valid_moves(
         "

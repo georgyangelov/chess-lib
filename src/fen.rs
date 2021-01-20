@@ -101,11 +101,40 @@ impl Position {
         }
 
         // TODO: Read en-passant square
-        if chars.next() != Some('-') {
-            return Err(FenParseError {
-                message: String::from("En-passant square not supported yet")
-            });
-        }
+        // if chars.next() != Some('-') {
+        //     return Err(FenParseError {
+        //         message: String::from("En-passant square not supported yet")
+        //     });
+        // }
+
+        let en_passant_square = match chars.next() {
+            Some(file_char) if file_char.is_alphabetic() => {
+                if let Some(rank_char) = chars.next() {
+                    Some(
+                        Square::from_notation(&format!("{}{}", file_char, rank_char))
+                            .map_err( |_notation_error| FenParseError {
+                                message: String::from("Invalid en-passant notation")
+                            } )?
+                    )
+                } else {
+                    return Err(FenParseError {
+                        message: String::from("Unexpected end of FEN string while reading en-passant notation")
+                    });
+                }
+            },
+
+            Some('-') => None,
+
+            // TODO: Code duplication
+            Some(c) => return Err(FenParseError {
+                message: format!("Unexpected character '{}'", c)
+            }),
+
+            // TODO: Code duplication
+            None => return Err(FenParseError {
+                message: String::from("Unexpected end of FEN string")
+            })
+        };
 
         if chars.next() != Some(' ') {
             return Err(FenParseError {
@@ -170,9 +199,13 @@ impl Position {
 
             next_to_move,
 
-            // TODO: Distinguish between king-side and queen-side
-            white_can_castle: white_can_castle_king_side,
-            black_can_castle: black_can_castle_king_side,
+            en_passant_square,
+
+            white_can_castle_king_side,
+            white_can_castle_queen_side,
+
+            black_can_castle_king_side,
+            black_can_castle_queen_side,
 
             half_move_clock,
             full_move_counter
@@ -188,11 +221,18 @@ impl Position {
             let last_square_in_rank = square.file == 7;
 
             match occupancy {
-                Some(occupancy) => fen.push(Self::occupancy_to_char(occupancy)),
+                Some(occupancy) => {
+                    if blank_square_count > 0 {
+                        fen.push_str(&blank_square_count.to_string());
+                        blank_square_count = 0;
+                    }
+
+                    fen.push(Self::occupancy_to_char(occupancy))
+                },
                 None => blank_square_count += 1
             }
 
-            if blank_square_count > 0 && (occupancy.is_some() || last_square_in_rank) {
+            if last_square_in_rank && blank_square_count > 0 {
                 fen.push_str(&blank_square_count.to_string());
                 blank_square_count = 0;
             }
@@ -209,25 +249,22 @@ impl Position {
         });
 
         fen.push(' ');
-        if !self.white_can_castle && !self.black_can_castle {
-            fen.push('-');
-        } else {
-            // TODO: King/Queen distinction
-            if self.white_can_castle {
-                fen.push('K');
-                fen.push('Q');
-            }
 
-            // TODO: King/Queen distinction
-            if self.white_can_castle {
-                fen.push('k');
-                fen.push('q');
-            }
-        }
+        let mut some_castling_possible = false;
+        if self.white_can_castle_king_side  { fen.push('K'); some_castling_possible = true }
+        if self.white_can_castle_queen_side { fen.push('Q'); some_castling_possible = true }
+        if self.black_can_castle_king_side  { fen.push('k'); some_castling_possible = true }
+        if self.black_can_castle_queen_side { fen.push('q'); some_castling_possible = true }
+        if !some_castling_possible { fen.push('-'); }
 
         // TODO: en-passant target square
         fen.push(' ');
-        fen.push('-');
+
+
+        match self.en_passant_square {
+            Some(square) => fen.push_str(&square.to_notation(SquareNotationOptions::FileAndRank)),
+            None => fen.push('-')
+        }
 
         fen.push(' ');
         fen.push_str(&self.half_move_clock.to_string());

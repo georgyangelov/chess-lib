@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 
 use super::parser::lexer::{Lexer, LexerError};
 use super::parser::{Parser, ParseError};
+use super::fen::FenParseError;
 
 #[derive(Debug)]
 pub struct Game {
@@ -24,7 +25,10 @@ pub struct ValidMove {
 
     pub piece: Piece,
 
-    pub takes: Option<Piece>
+    pub takes: Option<Piece>,
+    pub takes_en_passant: bool,
+
+    pub en_passant_square: Option<Square>
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -66,11 +70,15 @@ impl Game {
         Self { position: initial_position }
     }
 
-    // pub fn standard_position() -> Position {
-    //     Position {
-    //         board:
-    //     }
-    // }
+    pub fn new_from_fen(fen: &str) -> Result<Self, FenParseError> {
+        let position = Position::from_fen(fen)?;
+
+        Ok(Self::new(position))
+    }
+
+    pub fn standard_position() -> Position {
+        Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
+    }
 
     pub fn new_for_test(board: Board, next_to_move: Color) -> Self {
         Self {
@@ -80,13 +88,21 @@ impl Game {
 
                 next_to_move,
 
-                white_can_castle: true,
-                black_can_castle: true,
+                white_can_castle_king_side: true,
+                white_can_castle_queen_side: true,
+                black_can_castle_king_side: true,
+                black_can_castle_queen_side: true,
+
+                en_passant_square: None,
 
                 half_move_clock: 0,
                 full_move_counter: 0
             }
         }
+    }
+
+    pub fn position_to_fen(&self) -> String {
+        self.position.to_fen()
     }
 
     // pub fn from_pgn(pgn: &str) -> Result<Self, PGNReadError> {
@@ -137,6 +153,7 @@ impl Game {
         opposite_color_moves.into_iter().find( |valid_move| valid_move.to == square )
     }
 
+    // TODO: Cache this or not?
     pub fn valid_moves(&self) -> Vec<ValidMove> {
         self.valid_moves_for_color(self.position.next_to_move, true)
     }
@@ -190,6 +207,24 @@ impl Game {
             color: move_to_make.color
         });
 
+        if move_to_make.takes_en_passant {
+            let passing_pawn_direction = match move_to_make.color {
+                Color::White => -1,
+                Color::Black => 1
+            };
+
+            if move_to_make.to.rank + passing_pawn_direction < 0 || move_to_make.to.rank + passing_pawn_direction > 7 {
+                panic!("Cannot take en-passant on the first or last rank");
+            }
+
+            let pawn_to_take_square = Square {
+                file: move_to_make.to.file,
+                rank: move_to_make.to.rank + passing_pawn_direction
+            };
+
+            new_squares[((7 - pawn_to_take_square.rank) * 8 + pawn_to_take_square.file) as usize] = None;
+        }
+
         Game {
             position: Position {
                 board: Board {
@@ -198,8 +233,12 @@ impl Game {
 
                 next_to_move: self.position.next_to_move.opposite(),
 
-                white_can_castle: self.position.white_can_castle,
-                black_can_castle: self.position.black_can_castle,
+                white_can_castle_king_side:  self.position.white_can_castle_king_side,
+                white_can_castle_queen_side: self.position.white_can_castle_queen_side,
+                black_can_castle_king_side:  self.position.black_can_castle_king_side,
+                black_can_castle_queen_side: self.position.black_can_castle_queen_side,
+
+                en_passant_square: move_to_make.en_passant_square,
 
                 // TODO
                 half_move_clock: self.position.half_move_clock + 1,
@@ -214,6 +253,8 @@ impl Game {
 
     pub fn find_moves(&self, template: PartialMove) -> Vec<ValidMove> {
         let moves = self.valid_moves();
+
+        // println!("Valid moves: {:?}", moves.iter().map( |m| m.notation() ).collect::<Vec<String>>());
 
         moves.into_iter()
             .filter( |valid_move| Self::move_matches(valid_move, &template))
@@ -278,14 +319,6 @@ impl Game {
             Piece::King   => self.possible_king_moves(from, color)
         };
 
-        println!(
-            "{:?} {:?} {:?} -> {:?}",
-            piece,
-            from,
-            color,
-            moves.iter().map( |m| m.notation() ).collect::<Vec<String>>()
-        );
-
         moves
     }
 
@@ -309,20 +342,44 @@ impl Game {
             self.square_occupied(next_square) == None
         } else { false };
 
-        let forward_squares = [
-            Square::new(from.rank + direction, from.file).filter( |_| can_move_forward ),
-            Square::new(from.rank + 2 * direction, from.file).filter( |to|
-                can_move_forward &&
-                    Self::can_pawn_double_move(from, color) &&
-                    self.square_occupied(*to) == None
-            ),
-        ];
+        let mut forward_moves = Vec::new();
 
-        let forward_moves = forward_squares.iter()
-            .filter_map( |to| *to )
-            .map( |to| ValidMove::new(&self.position, Piece::Pawn, color, from, to, None));
+        if let Some(next_square) = next_square {
+            if can_move_forward {
+                forward_moves.push(
+                    ValidMove {
+                        piece: Piece::Pawn,
+                        color,
+                        from,
+                        to: next_square,
+                        takes: None,
+                        takes_en_passant: false,
+                        en_passant_square: None
+                    }
+                );
+            }
+        }
 
-        // TODO: En passant takes
+        let double_move_square = Square::new(from.rank + 2 * direction, from.file).filter( |to|
+            can_move_forward &&
+                Self::can_pawn_double_move(from, color) &&
+                self.square_occupied(*to) == None
+        );
+
+        if let Some(double_move_square) = double_move_square {
+            forward_moves.push(
+                ValidMove {
+                    piece: Piece::Pawn,
+                    color,
+                    from,
+                    to: double_move_square,
+                    takes: None,
+                    takes_en_passant: false,
+                    en_passant_square: next_square
+                }
+            );
+        }
+
         let take_squares = [
             Square::new(from.rank + direction, from.file - 1),
             Square::new(from.rank + direction, from.file + 1)
@@ -339,7 +396,32 @@ impl Game {
             )
             .filter_map( |to_and_occupancy|
                 match to_and_occupancy {
-                    Some((to, Some(occupancy))) => Some(ValidMove::new(&self.position, Piece::Pawn, color, from, to, Some(occupancy))),
+                    Some((to, None)) if self.position.en_passant_square.is_some() => {
+                        if self.position.en_passant_square.unwrap() == to {
+                            Some(ValidMove {
+                                piece: Piece::Pawn,
+                                color,
+                                from, to,
+                                takes: Some(Piece::Pawn),
+                                takes_en_passant: true,
+                                en_passant_square: None
+                            })
+                        } else {
+                            None
+                        }
+                    },
+
+                    Some((to, Some(occupancy))) => Some(
+                        ValidMove {
+                            piece: Piece::Pawn,
+                            color,
+                            from, to,
+                            takes: Some(occupancy.piece),
+                            takes_en_passant: false,
+                            en_passant_square: None
+                        }
+                    ),
+
                     Some(_) => None,
                     None => None
                 }
@@ -372,9 +454,25 @@ impl Game {
 
                 match occupancy {
                     Some(OccupiedSquare { piece: _, color: other_piece_color }) if other_piece_color != &color =>
-                        Some(ValidMove::new(&self.position, Piece::Knight, color, from, to, occupancy)),
+                        Some(ValidMove {
+                            piece: Piece::Knight,
+                            color,
+                            from,
+                            to,
+                            takes: occupancy.map( |occupancy| occupancy.piece ),
+                            takes_en_passant: false,
+                            en_passant_square: None
+                        }),
 
-                    None => Some(ValidMove::new(&self.position, Piece::Knight, color, from, to, occupancy)),
+                    None => Some(ValidMove {
+                        piece: Piece::Knight,
+                        color,
+                        from,
+                        to,
+                        takes: occupancy.map( |occupancy| occupancy.piece ),
+                        takes_en_passant: false,
+                        en_passant_square: None
+                    }),
 
                     _ => None,
                 }
@@ -445,12 +543,28 @@ impl Game {
 
             match occupancy {
                 Some(OccupiedSquare { piece: _, color: piece_color }) if color != *piece_color => {
-                    Some(ValidMove::new(&self.position, Piece::King, color, from, to, occupancy))
+                    Some(ValidMove {
+                        piece: Piece::King,
+                        color,
+                        from,
+                        to,
+                        takes: occupancy.map( |occupancy| occupancy.piece ),
+                        takes_en_passant: false,
+                        en_passant_square: None
+                    })
                 },
 
                 Some(_) => None,
 
-                None => Some(ValidMove::new(&self.position, Piece::King, color, from, to, occupancy))
+                None => Some(ValidMove {
+                    piece: Piece::King,
+                    color,
+                    from,
+                    to,
+                    takes: occupancy.map( |occupancy| occupancy.piece ),
+                    takes_en_passant: false,
+                    en_passant_square: None
+                })
             }
         }).collect()
     }
@@ -463,13 +577,29 @@ impl Game {
 
             match occupancy {
                 Some(OccupiedSquare { piece: _, color: piece_color }) if color != *piece_color => {
-                    valid_moves.push(ValidMove::new(&self.position, piece, color, from, to, occupancy));
+                    valid_moves.push(ValidMove {
+                        piece,
+                        color,
+                        from,
+                        to,
+                        takes: occupancy.map( |occupancy| occupancy.piece ),
+                        takes_en_passant: false,
+                        en_passant_square: None
+                    });
                     break
                 },
 
                 Some(_) => break,
 
-                None => valid_moves.push(ValidMove::new(&self.position, piece, color, from, to, occupancy))
+                None => valid_moves.push(ValidMove {
+                    piece,
+                    color,
+                    from,
+                    to,
+                    takes: occupancy.map( |occupancy| occupancy.piece ),
+                    takes_en_passant: false,
+                    en_passant_square: None
+                })
             }
         }
 
@@ -498,25 +628,6 @@ impl Game {
 }
 
 impl ValidMove {
-    fn new(
-        _position: &Position,
-        piece: Piece,
-        color: Color,
-        from: Square,
-        to: Square,
-        to_occupancy: Option<&OccupiedSquare>
-    ) -> Self {
-        Self {
-            color,
-
-            from,
-            to,
-
-            piece,
-            takes: to_occupancy.map( |occupancy| occupancy.piece )
-        }
-    }
-
     pub fn notation(&self) -> String {
         // TODO: Disambiguation square
         // TODO: Promotion
