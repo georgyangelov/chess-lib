@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use serde::{Serialize, Deserialize};
 
 use super::parser::lexer::{Lexer, LexerError};
-use super::parser::{Parser, ParseError};
+use super::parser::{Parser, ParseError, PGNMove};
 use super::fen::FenParseError;
 
 #[derive(Debug)]
@@ -76,6 +76,54 @@ impl Game {
         Ok(Self::new(position))
     }
 
+    // TODO: Starting positions from FEN
+    pub fn new_from_pgn(pgn: &str) -> Result<Vec<Result<Self, String>>, String> {
+        let mut lexer = Lexer::new(pgn);
+        let tokens = match lexer.lex() {
+            Ok(tokens) => tokens,
+            Err(error) => return Err(error.into())
+        };
+
+        let mut parser = Parser::new(tokens);
+        let pgn_games = match parser.parse() {
+            Ok(games) => games,
+            Err(error) => return Err(error.into())
+        };
+
+        Ok(pgn_games.into_iter().map( |pgn_game| {
+            let mut game;
+
+            // TODO: Check if setup is true?
+            if let Some(fen) = pgn_game.fen {
+                game = Game::new_from_fen(&fen).map_err( |e| e.message )?;
+            } else {
+                game = Game::new(Game::standard_position());
+            }
+
+            for next_move in pgn_game.moves {
+                let moves = &[next_move.white_move, next_move.black_move];
+
+                for next_half_move in moves {
+                    if let Some(next_half_move) = next_half_move {
+                        game = match game.make_move(&next_half_move) {
+                            Ok(game) => game,
+                            Err(_) => {
+                                let message = match next_move.number {
+                                    Some(move_number) => format!("Invalid move in PGN game: {} (move #{})", next_half_move, move_number),
+                                    None => format!("Invalid move in PGN game: {}", next_half_move)
+                                };
+
+                                return Err(message);
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(game)
+        }).collect())
+    }
+
     pub fn standard_position() -> Position {
         Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
     }
@@ -121,6 +169,10 @@ impl Game {
 
     pub fn in_mate(&self) -> bool {
         self.in_check(self.position.next_to_move) && self.valid_moves().len() == 0
+    }
+
+    pub fn draw_by_fifty_move_rule(&self) -> bool {
+        self.position.half_move_clock >= 50
     }
 
     pub fn in_check(&self, color: Color) -> bool {
@@ -189,6 +241,7 @@ impl Game {
         }
     }
 
+    // TODO: Actual error
     pub fn make_move(&self, notation: &str) -> Result<Self, ()> {
         let move_to_make = ValidMove::from_notation(self, notation)?;
 
@@ -240,8 +293,13 @@ impl Game {
 
                 en_passant_square: move_to_make.en_passant_square,
 
-                // TODO
-                half_move_clock: self.position.half_move_clock + 1,
+                // TODO: Add tests for this
+                half_move_clock: if move_to_make.takes.is_some() || move_to_make.piece == Piece::Pawn {
+                    0
+                } else {
+                    self.position.half_move_clock + 1
+                },
+
                 full_move_counter: if move_to_make.color == Color::White {
                     self.position.full_move_counter
                 } else {

@@ -12,7 +12,7 @@ pub mod game;
 pub mod wasm;
 
 pub use parser::lexer::{Lexer, Token};
-pub use parser::{ParsedGame, Move, Parser};
+pub use parser::{ParsedGame, PGNMove, Parser};
 pub use game::{Game, ValidMove};
 
 pub use models::*;

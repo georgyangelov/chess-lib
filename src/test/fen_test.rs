@@ -53,7 +53,7 @@ fn test_en_passant_square() {
 
         &["e5", "f5"],
 
-        "rnbqkbnr/ppppp1p1/7p/4Pp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 2 2"
+        "rnbqkbnr/ppppp1p1/7p/4Pp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 2"
     );
 }
 

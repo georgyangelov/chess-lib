@@ -126,6 +126,15 @@ pub fn expect_game_state(starting_board: &str, moves: &[&str], expected_board: &
     assert_eq!(trim_lines(expected_board), trim_lines(&board_debug_string));
 }
 
+pub fn expect_pgn_state(pgn: &str, expected_board: &str) {
+    let games = Game::new_from_pgn(pgn).expect("Could not parse PGN");
+    let first_game = games.into_iter().next().expect("No games in PGN").expect("Could not read game from PGN");
+
+    let board_debug_string = format!("{:?}", first_game.board());
+
+    assert_eq!(trim_lines(expected_board), trim_lines(&board_debug_string));
+}
+
 pub fn read_game(board: &str, next_to_move: Color) -> Game {
     Game::new_for_test(read_board(board), next_to_move)
 }

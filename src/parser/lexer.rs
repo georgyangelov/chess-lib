@@ -48,6 +48,16 @@ pub enum LexerError {
     UnexpectedCharacter(PositionInPGN)
 }
 
+impl std::convert::Into<String> for LexerError {
+    fn into(self) -> String {
+        match self {
+            LexerError::ParseIntError(position) => format!("Could not parse int @ {:?}", position),
+            LexerError::UnterminatedString(position) => format!("Unterminated string literal @ {:?}", position),
+            LexerError::UnexpectedCharacter(position) => format!("Unexpected character @ {:?}", position),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct PositionInPGN {
     pub line: i32,

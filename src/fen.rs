@@ -1,9 +1,11 @@
 use super::models::*;
 use std::vec::Vec;
 
-#[derive(Debug, PartialEq, Eq)]
+use serde::Serialize;
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct FenParseError {
-    message: String
+    pub message: String
 }
 
 impl Position {
@@ -99,13 +101,6 @@ impl Position {
                 })
             }
         }
-
-        // TODO: Read en-passant square
-        // if chars.next() != Some('-') {
-        //     return Err(FenParseError {
-        //         message: String::from("En-passant square not supported yet")
-        //     });
-        // }
 
         let en_passant_square = match chars.next() {
             Some(file_char) if file_char.is_alphabetic() => {
@@ -257,9 +252,7 @@ impl Position {
         if self.black_can_castle_queen_side { fen.push('q'); some_castling_possible = true }
         if !some_castling_possible { fen.push('-'); }
 
-        // TODO: en-passant target square
         fen.push(' ');
-
 
         match self.en_passant_square {
             Some(square) => fen.push_str(&square.to_notation(SquareNotationOptions::FileAndRank)),

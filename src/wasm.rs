@@ -1,10 +1,9 @@
 #![allow(non_snake_case)]
 
-use regex::Regex;
 use wasm_bindgen::prelude::*;
 use js_sys::Array;
-use serde::{Serialize, Serializer, Deserialize};
-use serde::ser::SerializeStruct;
+
+use serde::Serialize;
 
 use super::*;
 
@@ -18,14 +17,43 @@ pub struct JsValidMove {
     valid_move: ValidMove
 }
 
+#[derive(Serialize)]
+pub struct JsError {
+    pub message: String
+}
+
 #[wasm_bindgen]
 impl JsGame {
     #[wasm_bindgen(constructor)]
-    pub fn new(board_string: &str) -> Self {
-        let board = read_board(board_string);
+    pub fn new() -> JsGame {
+        JsGame {
+            game: Game::new(Game::standard_position())
+        }
+    }
 
-        Self {
-            game: Game::new_for_test(board, Color::White)
+    // TODO: Return multiple games?
+    pub fn fromPGN(pgn: &str) -> Result<JsGame, JsValue> {
+        let games = Game::new_from_pgn(pgn).map_err( |e| Self::js_error(e) )?;
+
+        if games.len() == 0 {
+            return Err(Self::js_error(String::from("No games inside PGN")));
+        }
+
+        if games.len() > 1 {
+            return Err(Self::js_error(String::from("More than one game inside PGN")));
+        }
+
+        games.into_iter().next().unwrap()
+            .map( |game| JsGame { game })
+            .map_err( |e| Self::js_error(e) )
+    }
+
+    pub fn fromFEN(fen: &str) -> Result<JsGame, JsValue> {
+        let game_result = Game::new_from_fen(fen);
+
+        match game_result {
+            Ok(game) => Ok(JsGame { game }),
+            Err(parse_error) => Err(JsValue::from_serde(&parse_error).expect("Cannot serialize ParseError to JSValue"))
         }
     }
 
@@ -36,39 +64,8 @@ impl JsGame {
             .map( |valid_move| JsValue::from_serde(&valid_move).unwrap() )
             .collect()
     }
-}
 
-fn read_board(string: &str) -> Board {
-    let mut squares: Vec<Option<OccupiedSquare>> = Vec::new();
-    let rank_regex = Regex::new(r"^(?i)\s*\|+\s*([PNBRQK])?\s*\|+\s*([PNBRQK])?\s*\|+\s*([PNBRQK])?\s*\|+\s*([PNBRQK])?\s*\|+\s*([PNBRQK])?\s*\|+\s*([PNBRQK])?\s*\|+\s*([PNBRQK])?\s*\|+\s*([PNBRQK])?").expect("Invalid regex");
-
-    for line in string.lines().filter( |line| line.trim().len() > 0 ).take(8) {
-        let pieces = rank_regex.captures(line).expect(&format!("Invalid line '{}'", line));
-
-        for piece in pieces.iter().skip(1) {
-            squares.push(piece.map( |m| {
-                let letter = m.as_str();
-
-                match letter {
-                    "P" => OccupiedSquare { piece: Piece::Pawn, color: Color::White },
-                    "N" => OccupiedSquare { piece: Piece::Knight, color: Color::White },
-                    "B" => OccupiedSquare { piece: Piece::Bishop, color: Color::White },
-                    "R" => OccupiedSquare { piece: Piece::Rook, color: Color::White },
-                    "Q" => OccupiedSquare { piece: Piece::Queen, color: Color::White },
-                    "K" => OccupiedSquare { piece: Piece::King, color: Color::White },
-
-                    "p" => OccupiedSquare { piece: Piece::Pawn, color: Color::Black },
-                    "n" => OccupiedSquare { piece: Piece::Knight, color: Color::Black },
-                    "b" => OccupiedSquare { piece: Piece::Bishop, color: Color::Black },
-                    "r" => OccupiedSquare { piece: Piece::Rook, color: Color::Black },
-                    "q" => OccupiedSquare { piece: Piece::Queen, color: Color::Black },
-                    "k" => OccupiedSquare { piece: Piece::King, color: Color::Black },
-
-                    _ => panic!(format!("Invalid piece letter '{}'", letter))
-                }
-            }));
-        }
+    fn js_error(message: String) -> JsValue {
+        JsValue::from_serde(&JsError { message }).expect("Cannot serialize JS error to JSValue")
     }
-
-    Board { squares }
 }

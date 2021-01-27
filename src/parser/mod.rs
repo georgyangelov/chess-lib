@@ -29,7 +29,7 @@ impl GameResult {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Move {
+pub struct PGNMove {
     pub number: Option<i64>,
     pub white_move: Option<String>,
     pub black_move: Option<String>
@@ -37,9 +37,13 @@ pub struct Move {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParsedGame {
-    pub tags: Vec<(String, String)>,
-    pub moves: Vec<Move>,
-    pub result: GameResult
+    pub setup: Option<bool>,
+    pub fen: Option<String>,
+
+    pub moves: Vec<PGNMove>,
+    pub result: GameResult,
+
+    pub other_tags: Vec<(String, String)>
 }
 
 struct TagPairSection {
@@ -51,6 +55,18 @@ pub enum ParseError {
     UnexpectedToken(Token),
     InvalidGameResult(String),
     UnexpectedEndOfFile
+}
+
+impl std::convert::Into<String> for ParseError {
+    fn into(self) -> String {
+        match self {
+            ParseError::UnexpectedToken(token) => format!("Unexpected token @ {:?}", token),
+            ParseError::InvalidGameResult(result) => format!("Invalid game result '{:?}'", result),
+
+            // TODO: Very very unhelpful. Idea: pass last token & expected next token
+            ParseError::UnexpectedEndOfFile => format!("Unexpected end of file"),
+        }
+    }
 }
 
 macro_rules! consume {
@@ -99,9 +115,12 @@ macro_rules! consume_value {
 macro_rules! consume_value_optional {
     ($self: ident, $pattern: pat, $variable: ident) => {
         {
-            let next_token = $self.read()?;
-            if let $pattern = next_token {
-                Some($variable)
+            if let $pattern = $self.peek() {
+                if let $pattern = $self.read()? {
+                    Some($variable)
+                } else {
+                    panic!("Read token != the peeked one");
+                }
             } else {
                 None
             }
@@ -159,7 +178,16 @@ impl Parser {
         let result = self.parse_game_result()?;
 
         Ok(ParsedGame {
-            tags: tag_pair_section.tag_pairs,
+            setup: tag_pair_section.tag_pairs.iter()
+                .find( |(key, _)| key == "SetUp" )
+                .map( |(_, value)| value == "1" ),
+
+            fen: tag_pair_section.tag_pairs.iter()
+                .find( |(key, _)| key == "FEN" )
+                .map( |(_, value)| value.clone() ),
+
+            other_tags: tag_pair_section.tag_pairs,
+
             moves,
             result
         })
@@ -188,7 +216,7 @@ impl Parser {
         Ok((name, value))
     }
 
-    fn parse_move_text_section(&mut self) -> Result<Vec<Move>, ParseError> {
+    fn parse_move_text_section(&mut self) -> Result<Vec<PGNMove>, ParseError> {
         let mut moves = Vec::new();
 
         while !Self::is_game_end(self.peek()) {
@@ -207,7 +235,7 @@ impl Parser {
         }
     }
 
-    fn parse_move(&mut self) -> Result<Move, ParseError> {
+    fn parse_move(&mut self) -> Result<PGNMove, ParseError> {
         self.ignore_comments()?;
 
         let number = consume_value_optional!(self, Token::Integer(value), value);
@@ -231,7 +259,7 @@ impl Parser {
         );
         self.ignore_comments()?;
 
-        Ok(Move { number, white_move, black_move })
+        Ok(PGNMove { number, white_move, black_move })
     }
 
     fn parse_game_result(&mut self) -> Result<GameResult, ParseError> {
